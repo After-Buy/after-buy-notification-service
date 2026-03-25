@@ -58,6 +58,8 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	// WebFlux(WebClient) 외부 API 호출 단위 테스트용
 	testImplementation 'io.projectreactor:reactor-test'
+	// JWT 인증 필터 등 시큐리티 설정 연관 통합 테스트용
+	testImplementation 'org.springframework.security:spring-security-test'
 	// JUnit5 플랫폼 로드 엔진
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
