@@ -1,0 +1,67 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.12'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.After_Buy'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	// 시스템 헬스 체크 및 모니터링 (Docker 컨테이너 상태 체크용)
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// 데이터베이스 ORM 및 알림 정보 엔티티 관리 (notification_db 연동)
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	// 알림 발송 로직 반복 및 예약 실행 스케줄러 관리 (크론잡 등)
+	implementation 'org.springframework.boot:spring-boot-starter-quartz'
+	// 클라이언트 알림 요청 DTO 파라미터 유효성 검사 (@Valid 등 적용)
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	// 알림 REST API 엔드포인트 구축용 프레임워크
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	// 내부망 통신 (Device Service 호출 등) 비동기 클라이언트 (WebClient)
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+	// API 명세서 포맷 자동 생성 및 Swagger UI
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
+	
+	// 앱 클라이언트 기기로의 푸시 알림(FCM) 발송 연동 모듈 (Firebase Admin SDK)
+	implementation 'com.google.firebase:firebase-admin:9.2.0'
+
+	// 앱에서 넘어온 JWT 토큰 자체 위조 검증 및 유저파싱용 (JJWT)
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+
+	// 알림 엔티티용 Lombok (Getter, Setter 등)
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	// AWS RDS MySQL 연결용 공식 JDBC Database 드라이버
+	runtimeOnly 'com.mysql:mysql-connector-j'
+
+	// 스프링 기본 통합 테스트 모듈 세트
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	// WebFlux(WebClient) 외부 API 호출 단위 테스트용
+	testImplementation 'io.projectreactor:reactor-test'
+	// JUnit5 플랫폼 로드 엔진
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
