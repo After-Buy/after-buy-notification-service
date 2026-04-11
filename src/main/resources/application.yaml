@@ -31,3 +31,23 @@ spring:
 firebase:
   config:
     path: ${FIREBASE_CONFIG_PATH}
+
+# 마이크로서비스 내부 통신 시크릿 키 (X-Internal-Secret 헤더 검증용)
+internal:
+  secret-key: ${INTERNAL_SECRET_KEY}
+
+# JWT 토큰 검증 설정 (Access Token 유효성 검사에 사용)
+jwt:
+  secret: ${JWT_SECRET}
+  access-expiration: ${JWT_ACCESS_EXPIRATION:3600000}
+
+# 타 마이크로서비스 내부 통신 URL 설정
+services:
+  device-url: ${SERVICES_DEVICE_URL:http://localhost:8082}
+
+# Swagger / SpringDoc 설정
+springdoc:
+  api-docs:
+    path: /api/notifications/v3/api-docs
+  swagger-ui:
+    path: /api/notifications/swagger-ui.html
