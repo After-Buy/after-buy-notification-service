@@ -39,3 +39,6 @@ out/
 ### Custom Env - 환경변수 파일 깃 업로드 금지###
 .env
 .env.*
+
+### Firebase 서비스 계정 키 (보안상 Git 관리 제외 필수) ###
+src/main/resources/firebase-service-account.json
