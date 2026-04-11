@@ -28,12 +28,12 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	// 데이터베이스 ORM 및 알림 정보 엔티티 관리 (notification_db 연동)
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	// 알림 발송 로직 반복 및 예약 실행 스케줄러 관리 (크론잡 등)
-	implementation 'org.springframework.boot:spring-boot-starter-quartz'
 	// 클라이언트 알림 요청 DTO 파라미터 유효성 검사 (@Valid 등 적용)
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	// 알림 REST API 엔드포인트 구축용 프레임워크
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	// JWT 인증 필터 및 SecurityConfig 구동용 Spring Security
+	implementation 'org.springframework.boot:spring-boot-starter-security'
 	// 내부망 통신 (Device Service 호출 등) 비동기 클라이언트 (WebClient)
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 	// API 명세서 포맷 자동 생성 및 Swagger UI
