@@ -1,6 +1,7 @@
 package com.After_Buy.NotificationService.scheduler;
 
 import com.After_Buy.NotificationService.client.InternalDeviceClient;
+import com.After_Buy.NotificationService.client.dto.response.ExpiringDeviceDto;
 import com.After_Buy.NotificationService.entity.Notification;
 import com.After_Buy.NotificationService.entity.PushSettings;
 import com.After_Buy.NotificationService.repository.NotificationRepository;
@@ -16,7 +17,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -25,9 +25,9 @@ import java.util.Optional;
  * FCM 푸시 알림 발송 및 notifications 테이블에 이력을 저장합니다.
  * 동일 (device_id, notification_type, 날짜) 조합의 중복 발송을 방지합니다.
  *
- * @since   : 2026.04.11
+ * @since : 2026.04.11
  * @version : 1.0.0
- * @author  : 신태훈
+ * @author : 신태훈
  */
 @Slf4j
 @Component
@@ -48,10 +48,10 @@ public class WarrantyAlertScheduler {
 		log.info("=== 보증 만료 알림 스케줄러 시작 ===");
 
 		int[][] dayTypeMap = {
-			{30, Notification.NotificationType.WARRANTY_D30.ordinal()},
-			{14, Notification.NotificationType.WARRANTY_D14.ordinal()},
-			{1,  Notification.NotificationType.WARRANTY_D1.ordinal()},
-			{0,  Notification.NotificationType.WARRANTY_EXPIRED.ordinal()}
+				{ 30, Notification.NotificationType.WARRANTY_D30.ordinal() },
+				{ 14, Notification.NotificationType.WARRANTY_D14.ordinal() },
+				{ 1, Notification.NotificationType.WARRANTY_D1.ordinal() },
+				{ 0, Notification.NotificationType.WARRANTY_EXPIRED.ordinal() }
 		};
 
 		Notification.NotificationType[] types = Notification.NotificationType.values();
@@ -74,7 +74,7 @@ public class WarrantyAlertScheduler {
 	 */
 	@Transactional
 	protected void processAlert(int days, Notification.NotificationType type) {
-		List<Map<String, Object>> devices = internalDeviceClient.getWarrantyExpiringDevices(days);
+		List<ExpiringDeviceDto> devices = internalDeviceClient.getWarrantyExpiringDevices(days);
 		if (devices.isEmpty()) {
 			log.debug("보증 만료 임박 기기 없음: days={}", days);
 			return;
@@ -83,12 +83,12 @@ public class WarrantyAlertScheduler {
 		log.info("알림 처리 시작: type={}, 기기 수={}", type, devices.size());
 		LocalDateTime now = LocalDateTime.now();
 		LocalDateTime startOfDay = now.with(LocalTime.MIN);
-		LocalDateTime endOfDay   = now.with(LocalTime.MAX);
+		LocalDateTime endOfDay = now.with(LocalTime.MAX);
 
-		for (Map<String, Object> device : devices) {
+		for (ExpiringDeviceDto device : devices) {
 			try {
-				Long deviceId = toLong(device.get("deviceId"));
-				Long userId   = toLong(device.get("userId"));
+				Long deviceId = device.getDeviceId();
+				Long userId = device.getUserId();
 
 				// ─── 중복 발송 방지 ───────────────────────────────────
 				if (notificationRepository.existsByDeviceIdAndTypeAndDate(deviceId, type, startOfDay, endOfDay)) {
@@ -97,26 +97,25 @@ public class WarrantyAlertScheduler {
 				}
 
 				// ─── 알림 이력 저장 ──────────────────────────────────
-				String warrantyExpiryDateStr = (String) device.get("warrantyExpiryDate");
-				LocalDate warrantyExpiryDate = LocalDate.parse(warrantyExpiryDateStr);
+				LocalDate warrantyExpiryDate = LocalDate.parse(device.getWarrantyExpiryDate());
 				LocalDateTime autoDeleteAt = warrantyExpiryDate.plusDays(7).atStartOfDay();
 
 				Notification notification = Notification.builder()
-					.userId(userId)
-					.deviceId(deviceId)
-					.deviceName((String) device.get("deviceName"))
-					.deviceImageUrl((String) device.get("deviceImageUrl"))
-					.notificationType(type)
-					.warrantyExpiryDate(warrantyExpiryDate)
-					.autoDeleteAt(autoDeleteAt)
-					.build();
+						.userId(userId)
+						.deviceId(deviceId)
+						.deviceName(device.getProductName())
+						.deviceImageUrl(device.getImageUrl())
+						.notificationType(type)
+						.warrantyExpiryDate(warrantyExpiryDate)
+						.autoDeleteAt(autoDeleteAt)
+						.build();
 				notificationRepository.save(notification);
 
 				// ─── FCM 발송 (push_enabled=1, fcm_token 존재 시) ────
 				Optional<PushSettings> pushSettings = pushSettingsRepository.findEnabledByUserId(userId);
 				if (pushSettings.isPresent()) {
 					String title = buildTitle(type);
-					String body  = buildBody(type, (String) device.get("deviceName"), days);
+					String body = buildBody(type, device.getProductName(), days);
 					boolean sent = fcmPushService.sendPush(pushSettings.get().getFcmToken(), title, body);
 					if (!sent) {
 						log.warn("FCM 발송 실패: userId={}, deviceId={}, type={}", userId, deviceId, type);
@@ -127,7 +126,7 @@ public class WarrantyAlertScheduler {
 
 			} catch (Exception e) {
 				log.error("기기별 알림 처리 중 오류 발생 (건너뜀): deviceId={}, error={}",
-					device.get("deviceId"), e.getMessage(), e);
+						device.getDeviceId(), e.getMessage(), e);
 			}
 		}
 	}
@@ -136,14 +135,14 @@ public class WarrantyAlertScheduler {
 	 * 알림 유형에 따른 FCM 제목 생성
 	 *
 	 * @param type : 알림 유형
-	 * @return     : FCM 푸시 알림 제목 문자열
+	 * @return : FCM 푸시 알림 제목 문자열
 	 */
 	private String buildTitle(Notification.NotificationType type) {
 		return switch (type) {
-			case WARRANTY_D30      -> "보증기간 만료 30일 전 알림";
-			case WARRANTY_D14      -> "보증기간 만료 14일 전 알림";
-			case WARRANTY_D1       -> "보증기간 만료 1일 전 알림";
-			case WARRANTY_EXPIRED  -> "보증기간이 만료되었습니다";
+			case WARRANTY_D30 -> "보증기간 만료 30일 전 알림";
+			case WARRANTY_D14 -> "보증기간 만료 14일 전 알림";
+			case WARRANTY_D1 -> "보증기간 만료 1일 전 알림";
+			case WARRANTY_EXPIRED -> "보증기간이 만료되었습니다";
 		};
 	}
 
@@ -153,23 +152,12 @@ public class WarrantyAlertScheduler {
 	 * @param type       : 알림 유형
 	 * @param deviceName : 기기명
 	 * @param days       : 만료까지 남은 일수
-	 * @return           : FCM 푸시 알림 본문 문자열
+	 * @return : FCM 푸시 알림 본문 문자열
 	 */
 	private String buildBody(Notification.NotificationType type, String deviceName, int days) {
 		if (type == Notification.NotificationType.WARRANTY_EXPIRED) {
 			return String.format("'%s'의 보증기간이 오늘로 만료되었습니다.", deviceName);
 		}
 		return String.format("'%s'의 보증기간이 %d일 후 만료됩니다. 지금 확인하세요.", deviceName, days);
-	}
-
-	/**
-	 * Object → Long 안전 변환 유틸
-	 *
-	 * @param value : Map에서 추출한 Object 값
-	 * @return      : Long 변환 결과
-	 */
-	private Long toLong(Object value) {
-		if (value instanceof Number n) return n.longValue();
-		return Long.parseLong(String.valueOf(value));
 	}
 }
