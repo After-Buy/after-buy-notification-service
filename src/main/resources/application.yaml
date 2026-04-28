@@ -44,6 +44,7 @@ jwt:
 # 타 마이크로서비스 내부 통신 URL 설정
 services:
   device-url: ${SERVICES_DEVICE_URL:http://localhost:8082}
+  admin-url: ${SERVICES_ADMIN_URL:http://localhost:8084}
 
 # Swagger / SpringDoc 설정
 springdoc:
