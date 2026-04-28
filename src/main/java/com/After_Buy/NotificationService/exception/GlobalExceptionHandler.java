@@ -1,6 +1,9 @@
 package com.After_Buy.NotificationService.exception;
 
+import com.After_Buy.NotificationService.client.AdminInternalClient;
 import com.After_Buy.NotificationService.dto.response.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -17,7 +20,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  */
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final AdminInternalClient adminInternalClient;
+
 
     /**
      * 커스텀 도메인 특화 비즈니스 예외 규격 핸들링 대응 함수
@@ -52,13 +59,22 @@ public class GlobalExceptionHandler {
     /**
      * 알 수 없는 최상단 런타임 익셉션 및 서버 크래시 백업용 언노운 예외 핸들링 함수
      * 시스템 예측망을 이탈한 치명적인 오류 발생 시 서버 내부 구조 노출 없이 500 응답으로 치환합니다.
+     * Admin Service로 비동기 에러 로그를 전송합니다. (Fire & Forget)
      *
-     * @param e : 컨트롤러 필터 통제 밖까지 도달하고 삐져나온 자바/네트워크의 원시 레거시 익셉션
-     * @return : INTERNAL 서버 오류와 서버 오류 메시지로 가려져 시스템의 구조 노출을 보호하는 서버 종점 500 응답 모듈
+     * @param e       : 컨트롤러 필터 통제 밖까지 도달하고 삐져나온 자바/네트워크의 원시 레거시 익셉션
+     * @param request : 현재 HTTP 요청 (path 추출용)
+     * @return : 서버 크래시 500 응답
+     * @since : 2026.04.26
+     * @author : 신태훈
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
+    public ResponseEntity<ApiResponse<Void>> handleException(Exception e, HttpServletRequest request) {
         log.error("처리되지 않은 예외 발생: {}", e.getMessage(), e);
+
+        /* Admin Service로 에러 로그 비동기 전송 (Fire & Forget, 4xx 제외 500급만) */
+        adminInternalClient.sendErrorLogAsync(request.getRequestURI(), e);
+
         return ResponseEntity.internalServerError().body(ApiResponse.error("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다."));
     }
 }
+
