@@ -41,7 +41,7 @@ public class NotificationController {
 	 */
 	@Operation(summary = "알림 목록 조회", description = "유효한 알림 목록을 조회합니다. auto_delete_at 필터링 및 Lazy Init이 적용됩니다.",
 		security = @SecurityRequirement(name = "bearerAuth"))
-	@GetMapping
+	@GetMapping("/home")
 	public ResponseEntity<ApiResponse<NotificationListResponse>> getNotifications(
 		@AuthenticationPrincipal UserPrincipal principal
 	) {
