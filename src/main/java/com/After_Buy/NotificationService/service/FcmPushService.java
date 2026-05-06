@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
  * FirebaseConfig에서 초기화된 FirebaseApp을 기반으로 동작합니다.
  *
  * @since   : 2026.04.11
- * @version : 1.0.0
+ * @version : 1.1.0
  * @author  : 신태훈
  */
 @Slf4j
@@ -55,17 +55,45 @@ public class FcmPushService {
 	}
 
 	/**
-	 * 브로드캐스트 — 단건 발송 성공 여부 반환 래퍼 메서드
+	 * 브로드캐스트 — 딥링크 포함 단건 발송 메서드
 	 * InternalNotificationController의 브로드캐스트 처리 루프에서 호출합니다.
-	 * sendPush()와 동일 로직이나 브로드캐스트 맥락임을 명확히 하기 위해 분리합니다.
+	 * notification 페이로드 외에 앱이 클릭 시 이동할 딥링크 정보를 data 페이로드로 함께 전송합니다.
 	 *
-	 * @param fcmToken : 발송 대상 FCM 토큰
-	 * @param title    : 브로드캐스트 메시지 제목
-	 * @param body     : 브로드캐스트 메시지 본문
-	 * @return         : 발송 성공 여부
+	 * @param fcmToken       : 발송 대상 FCM 토큰
+	 * @param title          : 브로드캐스트 메시지 제목
+	 * @param body           : 브로드캐스트 메시지 본문
+	 * @param deepLink       : 앱 내 딥링크 URL (null 허용 — null이면 data payload 미포함)
+	 * @param announcementId : 공지사항 ID (null 허용 — null이면 data payload 미포함)
+	 * @return               : 발송 성공 여부
 	 */
-	public boolean sendBroadcastPush(String fcmToken, String title, String body) {
-		return sendPush(fcmToken, title, body);
+	public boolean sendBroadcastPush(String fcmToken, String title, String body,
+			String deepLink, Long announcementId) {
+		Message.Builder builder = Message.builder()
+			.setToken(fcmToken)
+			.setNotification(
+				Notification.builder()
+					.setTitle(title)
+					.setBody(body)
+					.build()
+			);
+
+		// 딥링크 및 공지사항 ID가 존재하는 경우 data payload 추가
+		// 앱(프론트엔드)은 이 값을 읽어 클릭 시 공지사항 상세 화면으로 이동합니다.
+		if (deepLink != null && announcementId != null) {
+			builder.putData("deep_link", deepLink)
+				   .putData("announcement_id", String.valueOf(announcementId));
+			log.debug("FCM 브로드캐스트 data payload 추가: deepLink={}, announcementId={}", deepLink, announcementId);
+		}
+
+		try {
+			String response = FirebaseMessaging.getInstance().send(builder.build());
+			log.debug("FCM 브로드캐스트 발송 성공: messageId={}, token={}", response, maskToken(fcmToken));
+			return true;
+		} catch (FirebaseMessagingException e) {
+			log.error("FCM 브로드캐스트 발송 실패: token={}, errorCode={}, message={}",
+				maskToken(fcmToken), e.getErrorCode(), e.getMessage());
+			return false;
+		}
 	}
 
 	/**
