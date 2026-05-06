@@ -115,7 +115,13 @@ public class InternalNotificationController {
 		int fail = 0;
 
 		for (PushSettings ps : targets) {
-			boolean sent = fcmPushService.sendBroadcastPush(ps.getFcmToken(), request.getTitle(), request.getBody());
+			boolean sent = fcmPushService.sendBroadcastPush(
+				ps.getFcmToken(),
+				request.getTitle(),
+				request.getBody(),
+				request.getDeepLink(),
+				request.getAnnouncementId()
+			);
 			if (sent) success++;
 			else fail++;
 		}
@@ -125,3 +131,4 @@ public class InternalNotificationController {
 		return ResponseEntity.ok(ApiResponse.success(result));
 	}
 }
+

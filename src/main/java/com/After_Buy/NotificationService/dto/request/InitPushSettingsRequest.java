@@ -1,6 +1,8 @@
 package com.After_Buy.NotificationService.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -11,7 +13,7 @@ import lombok.NoArgsConstructor;
  * 신규 회원 가입 시 Auth Service가 비동기(Fire & Forget)로 호출합니다.
  *
  * @since   : 2026.04.11
- * @version : 1.0.0
+ * @version : 1.1.0
  * @author  : 신태훈
  */
 @Getter
@@ -25,4 +27,15 @@ public class InitPushSettingsRequest {
 	@NotNull(message = "userId는 필수입니다.")
 	@JsonProperty("user_id")
 	private Long userId;
+
+	/**
+	 * 초기 푸시 수신 동의 여부 (0: 거부, 1: 동의)
+	 * Auth Service에서 회원가입 시 설정한 초기값을 수신합니다.
+	 * null인 경우 기본값 1(동의)로 처리합니다.
+	 */
+	@Min(value = 0, message = "pushEnabled는 0 또는 1이어야 합니다.")
+	@Max(value = 1, message = "pushEnabled는 0 또는 1이어야 합니다.")
+	@JsonProperty("push_enabled")
+	private Integer pushEnabled;
 }
+
