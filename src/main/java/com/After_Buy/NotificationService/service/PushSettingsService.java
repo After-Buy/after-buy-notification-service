@@ -93,14 +93,16 @@ public class PushSettingsService {
 			log.info("push_settings 이미 존재 — init 건너뜀: userId={}", request.getUserId());
 			return;
 		}
+		// Auth Service가 전달한 push_enabled 값 반영, null이면 기본값 1(동의) 사용
+		int initialPushEnabled = (request.getPushEnabled() != null) ? request.getPushEnabled() : 1;
 		pushSettingsRepository.save(
 			PushSettings.builder()
 				.userId(request.getUserId())
-				.pushEnabled(1)
+				.pushEnabled(initialPushEnabled)
 				.fcmToken(null)
 				.build()
 		);
-		log.info("push_settings 초기 생성 완료: userId={}", request.getUserId());
+		log.info("push_settings 초기 생성 완료: userId={}, pushEnabled={}", request.getUserId(), initialPushEnabled);
 	}
 
 	/**
