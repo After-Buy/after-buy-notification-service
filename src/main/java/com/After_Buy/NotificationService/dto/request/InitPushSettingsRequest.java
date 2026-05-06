@@ -1,5 +1,6 @@
 package com.After_Buy.NotificationService.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,5 +23,6 @@ public class InitPushSettingsRequest {
 	 * push_settings 레코드 초기 생성의 기준 키입니다.
 	 */
 	@NotNull(message = "userId는 필수입니다.")
+	@JsonProperty("user_id")
 	private Long userId;
 }

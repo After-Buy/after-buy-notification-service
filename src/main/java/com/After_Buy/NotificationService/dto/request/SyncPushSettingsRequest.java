@@ -1,5 +1,6 @@
 package com.After_Buy.NotificationService.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -23,6 +24,7 @@ public class SyncPushSettingsRequest {
 	 * 동기화 대상 사용자 ID
 	 */
 	@NotNull(message = "userId는 필수입니다.")
+	@JsonProperty("user_id")
 	private Long userId;
 
 	/**
@@ -32,5 +34,6 @@ public class SyncPushSettingsRequest {
 	@NotNull(message = "pushEnabled는 필수입니다.")
 	@Min(value = 0, message = "pushEnabled는 0 또는 1이어야 합니다.")
 	@Max(value = 1, message = "pushEnabled는 0 또는 1이어야 합니다.")
+	@JsonProperty("push_enabled")
 	private Integer pushEnabled;
 }
