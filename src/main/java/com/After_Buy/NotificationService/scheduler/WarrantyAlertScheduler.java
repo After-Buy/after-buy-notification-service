@@ -40,10 +40,10 @@ public class WarrantyAlertScheduler {
 	private final FcmPushService fcmPushService;
 
 	/**
-	 * 보증 만료 알림 발송 크론잡 — 매일 오전 09:00 실행
+	 * 보증 만료 알림 발송 크론잡 — 매일 오전 09:00 실행, 테스트를 위한 17:00 수정
 	 * days=[30, 14, 1, 0] 순서로 순회하며 각 만료 임박 타입별 FCM 발송을 처리합니다.
 	 */
-	@Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
+	@Scheduled(cron = "0 0 17 * * *", zone = "Asia/Seoul")
 	public void sendWarrantyAlerts() {
 		log.info("=== 보증 만료 알림 스케줄러 시작 ===");
 
