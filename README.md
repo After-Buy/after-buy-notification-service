@@ -1,80 +1,180 @@
-# After-Buy Notification Service (알림 서비스)
+# After-Buy Notification Service
 
-## 📌 프로젝트 소개
+전자기기 보증기간 관리 앱 **After-Buy**의 알림 도메인을 담당하는 Spring Boot 기반 마이크로서비스입니다.  
+보증기간 만료 알림 이력, FCM 푸시 발송, 푸시 설정, 관리자 공지 브로드캐스트, Auth / Device / Admin Service와의 내부 연동을 담당합니다.
 
-MSA 기반의 After-Buy 플랫폼 환경에서 사용자에게 보증 만료 임박 FCM 푸시 알림을 발송하고, 알림 내역 및 푸시 설정(수신 동의 등)을 전담하는 마이크로서비스입니다. Auth, Admin, Device 등 타 서비스와의 원활한 데이터 동기화 및 알림 전파 기능을 수행합니다.
+## 담당 범위
 
-## 🛠️ 기술 스택
+- 사용자별 보증기간 알림 목록 조회, 읽음 처리, 수동 삭제
+- 사용자별 푸시 설정 조회 및 FCM 토큰 갱신
+- Auth Service의 신규 가입 / 푸시 ON-OFF / 회원 탈퇴 이벤트 처리
+- Device Service에서 보증 만료 임박 기기 목록 조회
+- 매일 스케줄러 기반 보증 만료 알림 생성 및 FCM 발송
+- Admin Service의 공지성 전체 푸시 브로드캐스트 지원
+- `X-Internal-Secret` 기반 내부 API 보호
+- Lazy Initialization으로 비동기 초기화 실패 복구
 
-- **Language**: Java 17
-- **Framework**: Spring Boot 3.x, Spring Data JPA, Spring Security, Spring WebFlux
-- **Database**: MySQL
-- **Communication**: WebClient (Device Service 기기 정보 조회 등 내부 통신용)
-- **Firebase**: Firebase Admin SDK (FCM 발송)
-- **Security**: JWT (Json Web Token), X-Internal-Secret (내부 API)
+## 기술 스택
 
-## ✨ 주요 기능
+| 구분 | 기술 |
+| --- | --- |
+| Language | Java 21 |
+| Framework | Spring Boot 3.5.12 |
+| Security | Spring Security, JWT(JJWT), X-Internal-Secret |
+| Database | MySQL, Spring Data JPA |
+| Push | Firebase Admin SDK / FCM |
+| Internal Communication | Spring WebFlux WebClient |
+| Scheduler | Spring Scheduling |
+| Docs | Springdoc OpenAPI / Swagger UI |
+| Test | JUnit 5, Spring Boot Test |
 
-- **자동 알림 스케줄러**: 매일 09시 보증 만료 임박 기기(D-30, 14, 1, 0)를 조회해 푸시 알림 발송 및 내역을 자동 기록합니다.
-- **FCM 푸시 알림**: Firebase SDK를 통해 단건 푸시 및 전체 사용자를 대상으로 한 관리자 권한의 브로드캐스트 푸시를 지원합니다.
-- **지연 초기화 (Lazy Initialization)**: 유연한 에러 복구와 불필요한 데이터 생성을 막기 위해, 푸시 설정이 없는 사용자가 목록이나 설정 조회 시점에 접근하면 기본값을 즉시 자동 생성합니다.
-- **내부 통신 보안 (Zero Trust 설계)**: MSA 간 내부 통신을 보호하기 위한 전용 `X-Internal-Secret` 인증 헤더 필터를 운용합니다.
-- **장애 격리 및 중복 방지**: 개별 기기에 대한 발송이 실패하더라도 스케줄러 전체 프로세스가 중단되지 않도록 예외를 격리하며, DB 조회를 통해 동일 날짜에 동일 유형의 중복 알림 생성을 차단합니다.
+## 핵심 구현
 
-## 📁 폴더 구조
+### 1. Lazy Initialization 기반 푸시 설정 복구
+
+Auth Service는 신규 가입 시 Notification Service에 `push_settings` 생성을 비동기로 요청합니다.  
+Notification Service가 일시적으로 내려가 있으면 이 초기화 요청이 실패할 수 있으므로, 다음 진입점에서 `push_settings`가 없으면 기본값으로 자동 생성합니다.
+
+- 알림 목록 조회: `GET /api/notifications/home`
+- 푸시 설정 조회: `GET /api/notifications/settings`
+- FCM 토큰 갱신: `PATCH /api/notifications/settings`
+- 푸시 ON/OFF 동기화 내부 API: `POST /internal/push-settings/sync`
+
+기본값은 `push_enabled=1`, `fcm_token=null`입니다.  
+이 구조 덕분에 비동기 초기화 실패가 사용자 가입 또는 앱 사용 실패로 이어지지 않습니다.
+
+### 2. 보증 만료 알림 스케줄러
+
+스케줄러가 Device Service의 내부 API를 호출해 만료 임박 기기를 조회하고, 알림 이력을 저장한 뒤 조건이 맞는 사용자에게 FCM을 발송합니다.
+
+알림 기준:
+
+- 보증 만료 30일 전: `WARRANTY_D30`
+- 보증 만료 14일 전: `WARRANTY_D14`
+- 보증 만료 1일 전: `WARRANTY_D1`
+- 보증 만료 당일: `WARRANTY_EXPIRED`
+
+중복 발송 방지를 위해 같은 날짜에 동일 `device_id + notification_type` 조합이 이미 존재하면 건너뜁니다.  
+개별 기기의 알림 처리 중 오류가 발생해도 전체 스케줄러가 중단되지 않도록 예외를 격리했습니다.
+
+### 3. FCM 발송과 브로드캐스트
+
+Firebase Admin SDK를 사용해 단건 푸시와 관리자 공지 브로드캐스트를 처리합니다.
+
+- 보증 만료 알림: 사용자별 FCM 토큰 대상 단건 발송
+- 관리자 공지: `push_enabled=1`이고 `fcm_token`이 존재하는 전체 사용자 대상 발송
+- 공지 푸시에는 `deep_link`, `announcement_id`를 data payload로 포함 가능
+- 로그에는 FCM 토큰 전체를 남기지 않고 일부만 마스킹
+
+### 4. 내부 API 보안
+
+`/internal/**` 경로는 외부 사용자용 JWT 인증과 분리하고, `X-Internal-Secret` 헤더로 보호합니다.  
+Auth Service와 Admin Service가 내부 이벤트를 전달할 때만 접근하도록 설계했습니다.
+
+## 주요 API
+
+### Notifications
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| GET | `/api/notifications/home` | 현재 사용자의 알림 목록 조회 |
+| PATCH | `/api/notifications/{notificationId}/read` | 알림 읽음 처리 |
+| DELETE | `/api/notifications/{notificationId}` | 알림 수동 삭제 |
+
+### Push Settings
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| GET | `/api/notifications/settings` | 푸시 설정 조회 |
+| PATCH | `/api/notifications/settings` | FCM 토큰 등록/갱신 |
+
+### Internal
+
+| Method | Endpoint | 설명 |
+| --- | --- | --- |
+| POST | `/internal/push-settings/init` | 신규 가입 사용자 푸시 설정 초기 생성 |
+| POST | `/internal/push-settings/sync` | Auth Service의 푸시 ON/OFF 변경 동기화 |
+| DELETE | `/internal/notifications/users/{userId}` | 탈퇴 사용자 알림/푸시 설정 전체 삭제 |
+| POST | `/internal/push/broadcast` | 관리자 공지성 FCM 브로드캐스트 |
+
+## 프로젝트 구조
 
 ```text
 src/main/java/com/After_Buy/NotificationService/
-├── client      # Device Service 등 연동 타 MSA용 WebClient 클라이언트
-├── config      # Security, Firebase SDK, Swagger, WebClient 인프라 설정
-├── controller  # 앱 연동 사용자 알림 REST API 및 MSA 내부망 연동 API 엔드포인트
-├── dto         # 계층 간 데이터 교환(Validation 적용) Request / Response 모델
-├── entity      # Notification, PushSettings 등 데이터베이스 영속성(JPA) 객체
-├── exception   # 서비스 전역 에러 제어용 핸들러 및 Custom Exception 커스텀 응답
-├── repository  # 데이터베이스 접근을 담당하는 Spring Data JPA 구현 계층
-├── scheduler   # 보증 알림 등 크론잡(Batch) 처리를 위한 프로세스
-├── security    # JWT 토큰 검증, 파싱 등 권한 필터 인프라
-└── service     # 푸시 발송 코어 관련 비즈니스 로직 (FCM, 알림 기록, 설정 연동)
+├── client      # Device/Admin Service 내부 API WebClient
+├── config      # Security, Firebase, Swagger, WebClient 설정
+├── controller  # 사용자 알림 API, 푸시 설정 API, 내부 API
+├── dto         # Request / Response DTO
+├── entity      # Notification, PushSettings JPA Entity
+├── exception   # CustomException, ErrorCode, GlobalExceptionHandler
+├── repository  # Spring Data JPA Repository
+├── scheduler   # 보증기간 만료 알림 스케줄러
+├── security    # JWT Provider, Authentication Filter, UserPrincipal
+└── service     # 알림 이력, 푸시 설정, FCM 발송 비즈니스 로직
 ```
 
-## 🚀 Getting Started (서버 실행 방법)
+## 실행 방법
 
-### 1. 환경 변수 세팅
+### 1. 환경 변수 설정
 
-앱 구동 전 필수 환경변수 리스트입니다. 프로젝트 루트 경로에 `.env` 파일을 직접 생성한 뒤 다음 변수들을 기입하여 사용하거나 IDE 환경변수로 주입해 주세요.
+프로젝트 루트에 `.env` 파일을 생성하거나 IDE 실행 환경변수로 주입합니다.
 
-- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` (MySQL 연동)
-  > ⚠️ **데이터베이스 필수 조건**: 서버 구동 전 `DB_NAME`으로 지정한 이름(예: `notification_db`)의 데이터베이스가 존재해야 합니다. 지정된 테이블은 구동 시 자동 구축됩니다.
-- `JWT_SECRET` (Auth Service와 반드시 동일해야 앱에서 넘어온 토큰을 파싱할 수 있습니다.)
-- `INTERNAL_SECRET_KEY` (타 MSA와의 승인된 통신을 위한 내부 교환 키)
-- `FIREBASE_CONFIG_PATH` (FCM 서비스 계정 파일 경로)
-- `SERVICES_DEVICE_URL` (대상 Device MSA 주소)
+```properties
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=notification_db
+DB_USERNAME=root
+DB_PASSWORD=password
 
-### 2. Firebase 접근 키 배치
+JWT_SECRET=...
+JWT_ACCESS_EXPIRATION=3600000
 
-Firebase 클라우드 메시징 통신을 위해 인증을 거친 `firebase-service-account.json` 서비스 계정 키 파일을 발급받아 `src/main/resources/` 하위에 배치해야 합니다.
+INTERNAL_SECRET_KEY=...
 
-### 3. 프로젝트 빌드
+FIREBASE_CONFIG_PATH=src/main/resources/firebase-service-account.json
 
-터미널을 열고 프로젝트 루트 경로에서 아래 명렁어를 통해 테스트를 제외한 클린 빌드를 수행합니다.
+SERVICES_DEVICE_URL=http://localhost:8082
+SERVICES_ADMIN_URL=http://localhost:8084
+```
+
+`DB_NAME`에 지정한 MySQL 데이터베이스는 서버 실행 전에 미리 생성되어 있어야 합니다.
+
+### 2. Firebase 서비스 계정 키 배치
+
+FCM 발송을 위해 Firebase 서비스 계정 JSON 파일을 발급받고, `FIREBASE_CONFIG_PATH`에 해당 파일 경로를 지정합니다.  
+서비스 계정 키는 민감 정보이므로 Git에 커밋하지 않습니다.
+
+### 3. 빌드
 
 ```bash
-# mac/linux의 경우: chmod +x gradlew
-./gradlew clean build -x test
+./gradlew clean build
 ```
 
-### 4. 로컬 서버 실행
-
-기본적으로 8083번 포트를 사용하여 내장 톰캣 서버가 가동됩니다. `dev` 프로필을 활성화하여 시작하세요.
+Windows 환경:
 
 ```bash
-./gradlew bootRun --args='--spring.profiles.active=dev'
+gradlew.bat clean build
 ```
 
-### 5. Swagger UI 활용 및 테스트
+### 4. 실행
 
-서버가 정상적으로 구동되었다면, 웹 브라우저에서 아래 주소로 접속해 API 명세를 확인할 수 있습니다.
+```bash
+./gradlew bootRun
+```
+
+기본 포트는 `8083`입니다.
+
+### 5. Swagger
 
 ```text
-http://localhost:8083/api/notifications/swagger-ui/index.html
+http://localhost:8083/api/notifications/swagger-ui.html
 ```
+
+## 설계 포인트
+
+- Auth Service의 신규 가입 초기화 호출을 비동기로 받고, Notification Service 자체 Lazy Init으로 최종 일관성을 확보했습니다.
+- 알림 ON/OFF 값은 Auth Service가 사용자 설정의 기준값을 갖고, Notification Service는 FCM 발송 판단에 필요한 복제 값을 유지합니다.
+- 보증 알림 이력 저장과 FCM 발송을 분리해 FCM 실패가 알림 기록 자체를 막지 않도록 했습니다.
+- 개별 기기 처리 실패가 전체 스케줄러 실패로 번지지 않도록 try-catch 범위를 기기 단위로 좁혔습니다.
+- 관리자 공지 브로드캐스트는 Notification Service가 FCM 토큰과 수신 동의 상태를 가진 서비스라는 점을 활용해 내부 API로 제공했습니다.
+
